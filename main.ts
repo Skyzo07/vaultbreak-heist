@@ -1,6 +1,6 @@
-// VAULTBREAK's hand-in: the game is the plain static files in game/ next
-// to this file (index.html plus ES modules, no library, no network), and
-// the screenshots are the real renders in screenshots/. This program hands
+// VAULTBREAK's hand-in: the game is the plain static files in game/
+// (index.html plus ES modules, no library, no network), and the
+// screenshots are the real renders in screenshots/. This program hands
 // both in: it copies game/ and screenshots/ to /output and writes
 // /output/dossier.json, the summary the judge reads, with the vendored
 // make.fun library. Outside the grader, MAKEFUN_OUTPUT_DIR stands in for
@@ -16,23 +16,31 @@ import { buildDossier } from './vendor/makefun-game.ts';
 const here = fileURLToPath(new URL('.', import.meta.url));
 const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
-mkdirSync(out, { recursive: true });
-cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
-mkdirSync(join(out, 'screenshots'), { recursive: true });
-if (existsSync(join(here, 'screenshots'))) {
-  cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
-}
-
 // The scorer's own caps: at most 4 screenshots, each at most 256 KiB;
 // game/ at most 993 files and 48 MiB in all, no path over 1000 bytes —
 // the dossier refuses an entry the scorer would refuse.
-writeFileSync(
-  join(out, 'dossier.json'),
-  buildDossier(out, {
-    text_max_bytes: 163840,
-    screenshots: { max: 4, max_bytes: 262144 },
-    game_max_files: 993,
-    game_max_bytes: 50331648,
-    game_path_max_bytes: 1000,
-  }),
-);
+const DOSSIER_LIMITS = {
+  text_max_bytes: 163840,
+  screenshots: { max: 4, max_bytes: 262144 },
+  game_max_files: 993,
+  game_max_bytes: 50331648,
+  game_path_max_bytes: 1000,
+};
+
+/** Hand the entry in: copy the game and the screenshots, then write the
+ *  dossier the judge reads. Pure file work — no network, no build. */
+function main() {
+  mkdirSync(out, { recursive: true });
+  cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
+  mkdirSync(join(out, 'screenshots'), { recursive: true });
+  if (existsSync(join(here, 'screenshots'))) {
+    cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
+  }
+
+  writeFileSync(
+    join(out, 'dossier.json'),
+    buildDossier(out, DOSSIER_LIMITS),
+  );
+}
+
+main();

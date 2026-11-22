@@ -11,7 +11,10 @@ export const ROOM = { x: 16, y: 76, width: 1248, height: 628 };
 export const STEP = 1 / 60;
 
 export const PLAYER = {
-  radius: 14,
+  // Big enough to read at a glance in a 1280x720 thumbnail: the thief is
+  // the one figure the eye must find first. Touch checks use fixed radii
+  // elsewhere, so this only changes wall collision and the drawing.
+  radius: 18,
   walkSpeed: 175,
   sneakSpeed: 98,
   // Running footsteps are heard this far away by guards and the dog.
@@ -27,7 +30,11 @@ export const GUARD = {
   suspiciousSpeed: 105,
   chaseSpeed: 152,
   // Alarm points per second of full exposure, standing in the light.
-  alarmRate: 72,
+  // A touch slower than before (72): the Vault floor's busts all came
+  // from the meter hitting 100 mid-chase in the open, before the thief
+  // could break line of sight. This is escape margin, not a free pass —
+  // a full stare still busts you in about a second and a half.
+  alarmRate: 64,
   touchRadius: 24,
 };
 
@@ -40,7 +47,10 @@ export const CAMERA = {
 export const DOG = {
   range: 130,
   halfAngle: 0.7,
-  patrolSpeed: 128,
+  // A touch slower on patrol than before (128): the bottom lane's gem run
+  // was phase-sensitive and cost the pilot a heart on one seed. The chase
+  // speed is unchanged, so the dog is still dangerous once it spots you.
+  patrolSpeed: 115,
   chaseSpeed: 190,
   alarmRate: 95,
   hearRadius: 280,

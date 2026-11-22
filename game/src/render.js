@@ -2,7 +2,7 @@
 // The 1280x720 playfield is scaled to fit the window and centred. Nothing
 // here changes the world; it only reads it.
 
-import { FIELD, ROOM, PALETTE, FONT } from './config.js';
+import { FIELD, ROOM, PALETTE, FONT, PLAYER } from './config.js';
 import { laserIsOn } from './loot.js';
 import { formatTime } from './alarm.js';
 import { pointInRect } from './geom.js';
@@ -69,13 +69,20 @@ export function createRenderer(canvas) {
 
   function drawFloor(world) {
     const level = world.level;
-    // Checkerboard stone floor.
+    // Checkerboard stone floor, with a faint grout line and a speckle of
+    // darker stone in each tile so the floor reads as texture, not flat.
     const tile = 64;
     for (let y = ROOM.y; y < ROOM.y + ROOM.height; y += tile) {
       for (let x = ROOM.x; x < ROOM.x + ROOM.width; x += tile) {
         const even = ((x - ROOM.x) / tile + (y - ROOM.y) / tile) % 2 === 0;
         ctx.fillStyle = even ? PALETTE.floor : PALETTE.floorAlt;
         ctx.fillRect(x, y, tile, tile);
+        const h = ((x * 31 + y * 17) % 97) / 97;
+        ctx.fillStyle = `rgba(0,0,0,${0.05 + h * 0.08})`;
+        ctx.fillRect(x + 8 + h * 30, y + 10 + ((x * 13 + y * 7) % 40), 14, 9);
+        ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x + 0.5, y + 0.5, tile, tile);
       }
     }
     // A carpet runner down the middle of the room.
@@ -84,18 +91,25 @@ export function createRenderer(canvas) {
     ctx.strokeStyle = 'rgba(255,217,74,0.35)';
     ctx.lineWidth = 2;
     ctx.strokeRect(ROOM.x + 40, 332, ROOM.width - 80, 56);
-    // Lamp pools: warm light on the floor.
+    // Lamp pools: warm light on the floor, bright at the bulb and fading
+    // out — the warm pools are what make the dark shadow lanes read as
+    // safe by contrast.
     for (const lamp of level.lamps) {
-      const g = ctx.createRadialGradient(lamp.x, lamp.y, 8, lamp.x, lamp.y, lamp.r);
-      g.addColorStop(0, 'rgba(245,201,92,0.30)');
+      const g = ctx.createRadialGradient(lamp.x, lamp.y, 4, lamp.x, lamp.y, lamp.r);
+      g.addColorStop(0, 'rgba(255,214,110,0.55)');
+      g.addColorStop(0.45, 'rgba(245,201,92,0.30)');
       g.addColorStop(1, 'rgba(245,201,92,0)');
       ctx.fillStyle = g;
       ctx.beginPath();
       ctx.arc(lamp.x, lamp.y, lamp.r, 0, Math.PI * 2);
       ctx.fill();
+      ctx.fillStyle = '#ffe9a8';
+      ctx.beginPath();
+      ctx.arc(lamp.x, lamp.y, 6, 0, Math.PI * 2);
+      ctx.fill();
       ctx.fillStyle = PALETTE.lamp;
       ctx.beginPath();
-      ctx.arc(lamp.x, lamp.y, 5, 0, Math.PI * 2);
+      ctx.arc(lamp.x, lamp.y, 3.5, 0, Math.PI * 2);
       ctx.fill();
     }
     // Shadow patches: the safe lanes, dark and obvious.
@@ -153,6 +167,16 @@ export function createRenderer(canvas) {
       const bob = Math.sin(world.time * 2 + loot.bob) * 2;
       const x = loot.x;
       const y = loot.y + bob;
+      // A soft glow under the loot so gold, gems and the vault read as
+      // the goal from across the room.
+      const glowColor = loot.kind === 'vault' ? '155,232,255' : loot.kind === 'gem' ? '92,225,230' : '255,217,74';
+      const glow = ctx.createRadialGradient(x, y, 4, x, y, 34);
+      glow.addColorStop(0, `rgba(${glowColor},0.35)`);
+      glow.addColorStop(1, `rgba(${glowColor},0)`);
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(x, y, 34, 0, Math.PI * 2);
+      ctx.fill();
       if (loot.kind === 'gold') {
         ctx.fillStyle = PALETTE.gold;
         ctx.beginPath();
@@ -263,12 +287,15 @@ export function createRenderer(canvas) {
 
   function drawWalls(world) {
     for (const w of world.level.walls) {
-      ctx.fillStyle = 'rgba(0,0,0,0.4)';
-      ctx.fillRect(w.x + 4, w.y + 5, w.w, w.h);
+      // A deeper drop shadow lifts the walls off the floor.
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(w.x + 6, w.y + 8, w.w, w.h);
       ctx.fillStyle = PALETTE.wall;
       ctx.fillRect(w.x, w.y, w.w, w.h);
       ctx.fillStyle = PALETTE.wallTop;
       ctx.fillRect(w.x, w.y, w.w, 5);
+      ctx.fillStyle = 'rgba(255,255,255,0.06)';
+      ctx.fillRect(w.x, w.y + w.h - 3, w.w, 3);
     }
     // The room's outer walls.
     ctx.strokeStyle = PALETTE.wallTop;
@@ -277,12 +304,15 @@ export function createRenderer(canvas) {
   }
 
   function drawWatchers(world) {
-    // Camera cones first (under the guards), then guard cones.
+    // Camera cones first (under the guards), then guard cones. Each cone
+    // gets a brighter core near the watcher so the dangerous half of the
+    // cone reads at a glance, not just its edge.
     for (const camera of world.cameras) {
       if (camera.frozen > 0) {
         cone(camera.x, camera.y, camera.angle, 215, 0.42, '#8b93a3', 0.12);
       } else {
         cone(camera.x, camera.y, camera.angle, 215, 0.42, PALETTE.cameraCone, 0.22);
+        cone(camera.x, camera.y, camera.angle, 118, 0.42, PALETTE.cameraCone, 0.30);
       }
       ctx.fillStyle = '#22283c';
       ctx.fillRect(camera.x - 9, camera.y - 7, 18, 14);
@@ -295,11 +325,16 @@ export function createRenderer(canvas) {
       const alerted = guard.state === GUARD_ALERTED;
       const color = alerted ? PALETTE.coneAlert : PALETTE.cone;
       cone(guard.x, guard.y, guard.angle, 185, 0.55, color, alerted ? 0.34 : 0.22);
-      // The guard: navy uniform, cap, facing wedge.
+      cone(guard.x, guard.y, guard.angle, 102, 0.55, color, alerted ? 0.30 : 0.20);
+      // The guard: navy uniform, cap, facing wedge, pale outline so the
+      // figure reads against the dark floor and its own cone.
       ctx.fillStyle = PALETTE.guard;
       ctx.beginPath();
       ctx.arc(guard.x, guard.y, 14, 0, Math.PI * 2);
       ctx.fill();
+      ctx.strokeStyle = '#8fa3d9';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
       ctx.fillStyle = PALETTE.guardDark;
       ctx.beginPath();
       ctx.arc(guard.x, guard.y, 14, guard.angle - 0.9, guard.angle + 0.9);
@@ -327,10 +362,14 @@ export function createRenderer(canvas) {
     const dog = world.dog;
     if (dog) {
       cone(dog.x, dog.y, dog.angle, 130, 0.7, '#d98a3d', 0.22);
+      cone(dog.x, dog.y, dog.angle, 72, 0.7, '#d98a3d', 0.20);
       ctx.fillStyle = PALETTE.dog;
       ctx.beginPath();
       ctx.arc(dog.x, dog.y, 11, 0, Math.PI * 2);
       ctx.fill();
+      ctx.strokeStyle = '#e8b07a';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
       ctx.beginPath();
       ctx.arc(dog.x - 7, dog.y - 7, 4, 0, Math.PI * 2);
       ctx.arc(dog.x + 7, dog.y - 7, 4, 0, Math.PI * 2);
@@ -358,32 +397,53 @@ export function createRenderer(canvas) {
       ctx.textAlign = 'center';
       ctx.fillText('♪', puck.x, puck.y - 12);
     }
-    // The thief: hooded, teal, facing where he moves.
+    // The thief: a hooded figure in bright teal, bigger than before and
+    // ringed in pale light so he is the first thing the eye finds, even
+    // in shadow. A pointed hood in the facing direction, dark visor slit.
+    const R = PLAYER.radius;
     ctx.save();
     if (p.sneak) ctx.globalAlpha = 0.92;
+    ctx.shadowColor = 'rgba(45,212,167,0.55)';
+    ctx.shadowBlur = 12;
     ctx.fillStyle = PALETTE.player;
     ctx.beginPath();
-    ctx.arc(p.x, p.y, p.sneak ? 12 : 14, 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, R, 0, Math.PI * 2);
     ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = '#d9fff2';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
     ctx.fillStyle = PALETTE.playerDark;
     ctx.beginPath();
-    ctx.arc(p.x, p.y, 14, p.angle - 1.0, p.angle + 1.0);
+    ctx.arc(p.x, p.y, R, p.angle - 1.0, p.angle + 1.0);
     ctx.lineTo(p.x, p.y);
     ctx.fill();
+    // Hood peak pointing where he moves.
+    ctx.fillStyle = PALETTE.player;
+    ctx.beginPath();
+    const hx = p.x + Math.cos(p.angle) * (R + 4);
+    const hy = p.y + Math.sin(p.angle) * (R + 4);
+    const px = -Math.sin(p.angle);
+    const py = Math.cos(p.angle);
+    ctx.moveTo(hx, hy);
+    ctx.lineTo(p.x + px * (R - 4), p.y + py * (R - 4));
+    ctx.lineTo(p.x - px * (R - 4), p.y - py * (R - 4));
+    ctx.closePath();
+    ctx.fill();
     ctx.fillStyle = '#0b0e1a';
-    ctx.fillRect(p.x - 8, p.y - 3, 16, 5);
+    ctx.fillRect(p.x - 9, p.y - 3, 18, 5);
     ctx.restore();
     if (hidden) {
       ctx.fillStyle = '#9be8ff';
       ctx.font = `bold 11px ${FONT}`;
       ctx.textAlign = 'center';
-      ctx.fillText('HIDDEN', p.x, p.y - 22);
+      ctx.fillText('HIDDEN', p.x, p.y - R - 8);
     }
     if (p.sneak) {
       ctx.fillStyle = PALETTE.muted;
       ctx.font = `11px ${FONT}`;
       ctx.textAlign = 'center';
-      ctx.fillText('sneaking', p.x, p.y + 26);
+      ctx.fillText('sneaking', p.x, p.y + R + 12);
     }
   }
 

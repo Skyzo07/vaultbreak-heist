@@ -106,7 +106,11 @@ export const LEVELS = [
     ],
     shadows: [
       { x: 16, y: 76, w: 170, h: 120 },
-      { x: 400, y: 580, w: 200, h: 124 },
+      // Widened (was x 400 w 200): the bottom lane runs under the dog's
+      // patrol and the gem at (520,640) sits in it, so the pocket the
+      // thief waits in while the dog passes is now a real pocket, not a
+      // strip the dog's cone clips.
+      { x: 360, y: 580, w: 280, h: 124 },
       { x: 720, y: 76, w: 180, h: 100 },
       { x: 1040, y: 560, w: 224, h: 144 },
       { x: 1040, y: 76, w: 120, h: 90 },
