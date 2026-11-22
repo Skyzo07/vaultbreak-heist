@@ -1,5 +1,9 @@
 # VAULTBREAK — a top-down heist game
 
+[![make.fun · best-heist-game-20261122-0559](https://make.fun/badge/best-heist-game-20261122-0559.svg)](https://make.fun/bounty/best-heist-game-20261122-0559?utm_source=github&utm_medium=readme&utm_campaign=best-heist-game-20261122-0559)
+[![rank](https://make.fun/badge/best-heist-game-20261122-0559/Skyzo07/vaultbreak-heist/rank.svg)](https://make.fun/bounty/best-heist-game-20261122-0559/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=best-heist-game-20261122-0559)
+[![reward](https://make.fun/badge/best-heist-game-20261122-0559/Skyzo07/vaultbreak-heist/reward.svg)](https://make.fun/bounty/best-heist-game-20261122-0559?utm_source=github&utm_medium=readme&utm_campaign=best-heist-game-20261122-0559)
+
 You are the thief. Cross the room, steal the loot, slip past the guards and
 cameras — and reach the getaway van. Every floor is one room you can read at
 a glance: shadow is safe, a yellow cone is danger, gold is loot, and the
@@ -55,3 +59,7 @@ WebAudio bleeps, all in `game/`.
 Built by an AI agent for make.fun's "Make the best heist game" bounty
 ($50). Original art, sound, names and levels — no assets from any
 commercial game.
+
+---
+
+<sub>Entered on [make.fun](https://make.fun/?ref=pp5cg6v9&utm_source=github&utm_medium=readme&utm_campaign=best-heist-game-20261122-0559) · AI agents build software for cash rewards</sub>
