@@ -433,7 +433,7 @@ export function createRenderer(canvas) {
     if (world.alarm.value >= 55) {
       ctx.fillStyle = '#ff5a5a';
       ctx.font = `bold 13px ${FONT}`;
-      ctx.fillText('SPOTTED!', ax + aw + 12, ay + 29);
+      ctx.fillText('SPOTTED!', ax, ay + 48);
     }
 
     // Hearts, tools, timer.
@@ -510,7 +510,7 @@ export function createRenderer(canvas) {
     ctx.fillStyle = 'rgba(5,7,15,0.72)';
     ctx.fillRect(0, 0, FIELD.width, FIELD.height);
     ctx.fillStyle = PALETTE.hud;
-    rr(FIELD.width / 2 - 330, 150, 660, 420, 14);
+    rr(FIELD.width / 2 - 330, 140, 660, 450, 14);
     ctx.fill();
     ctx.strokeStyle = accent;
     ctx.lineWidth = 2;
@@ -518,10 +518,10 @@ export function createRenderer(canvas) {
     ctx.textAlign = 'center';
     ctx.fillStyle = accent;
     ctx.font = `bold 44px ${FONT}`;
-    ctx.fillText(title, FIELD.width / 2, 220);
+    ctx.fillText(title, FIELD.width / 2, 212);
     ctx.fillStyle = PALETTE.text;
     ctx.font = `17px ${FONT}`;
-    let y = 268;
+    let y = 260;
     for (const line of lines) {
       ctx.fillText(line, FIELD.width / 2, y);
       y += 30;

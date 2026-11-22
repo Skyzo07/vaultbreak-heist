@@ -8,7 +8,7 @@
 // player standing there would see.
 
 import { ROOM } from './config.js';
-import { dist, inCone, pointInRect } from './geom.js';
+import { clamp, dist, inCone, pointInRect } from './geom.js';
 import { GUARD } from './config.js';
 import { CAMERA, DOG } from './config.js';
 import { laserIsOn, isLockpickLoot } from './loot.js';
@@ -29,6 +29,10 @@ export function createAutopilot(world) {
     stuckTimer: 0,
     lastNoiseAt: -100,
     lastEmpAt: -100,
+    // After a lockpick is broken off, the pilot waits out the heat before
+    // trying again — suspicion only decays 0.25/s, so immediate retries
+    // stack it up until a guard goes alerted.
+    lockpickCooldownUntil: 0,
   };
 
   function cellBlocked(cx, cy) {
@@ -117,10 +121,21 @@ export function createAutopilot(world) {
     return null;
   }
 
+  /** Distance from a point to a segment (for patrol-lane checks). */
+  function distToSegment(px, py, x1, y1, x2, y2) {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const len2 = dx * dx + dy * dy;
+    let t = len2 === 0 ? 0 : ((px - x1) * dx + (py - y1) * dy) / len2;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+  }
+
   /**
    * The nearest shadow that is safe to hide in right now: its centre is
-   * outside every cone and laser, and no guard or dog is close to it. A
-   * shadow on a patrol lane is a trap, not a refuge.
+   * outside every cone and laser, no guard or dog is close to it, and it
+   * does not sit on a patrol lane — a shadow above a lane is a trap, not
+   * a refuge, because the patrolling guard's cone sweeps straight through it.
    */
   function nearestSafeShadow(x, y) {
     let best = null;
@@ -132,8 +147,23 @@ export function createAutopilot(world) {
       let close = false;
       for (const g of world.state.guards) {
         if (dist(g.x, g.y, cx, cy) < 110) { close = true; break; }
+        const wps = g.waypoints;
+        for (let i = 0; i < wps.length; i += 1) {
+          const a = wps[i];
+          const b = wps[(i + 1) % wps.length];
+          if (distToSegment(cx, cy, a.x, a.y, b.x, b.y) < 110) { close = true; break; }
+        }
+        if (close) break;
       }
-      if (!close && world.state.dog && dist(world.state.dog.x, world.state.dog.y, cx, cy) < 110) close = true;
+      if (!close && world.state.dog) {
+        const wps = world.state.dog.waypoints;
+        for (let i = 0; i < wps.length; i += 1) {
+          const a = wps[i];
+          const b = wps[(i + 1) % wps.length];
+          if (distToSegment(cx, cy, a.x, a.y, b.x, b.y) < 110) { close = true; break; }
+        }
+        if (dist(world.state.dog.x, world.state.dog.y, cx, cy) < 110) close = true;
+      }
       if (close) continue;
       const d = dist(x, y, cx, cy);
       if (d < bestD) {
@@ -192,10 +222,31 @@ export function createAutopilot(world) {
 
   function fleeCmd(threat) {
     const p = world.state.player;
-    const dx = p.x - threat.x;
-    const dy = p.y - threat.y;
+    let dx = p.x - threat.x;
+    let dy = p.y - threat.y;
     const len = Math.hypot(dx, dy) || 1;
-    return { steer: { x: dx / len, y: dy / len }, sneak: false, interact: false, noiseAt: null, emp: false };
+    dx /= len;
+    dy /= len;
+    // Don't run into a corner: near an edge, blend the escape toward the
+    // middle of the room so a chase has somewhere to go.
+    const nearEdge =
+      p.x < ROOM.x + 90 || p.x > ROOM.x + ROOM.width - 90 || p.y < ROOM.y + 90 || p.y > ROOM.y + ROOM.height - 90;
+    if (nearEdge) {
+      dx = dx * 0.6 + ((640 - p.x) / 640) * 0.6;
+      dy = dy * 0.6 + ((390 - p.y) / 390) * 0.6;
+      const l = Math.hypot(dx, dy) || 1;
+      dx /= l;
+      dy /= l;
+    }
+    return { steer: { x: dx, y: dy }, sneak: false, interact: false, noiseAt: null, emp: false };
+  }
+
+  /** The shadow rect the point is inside, or null. */
+  function shadowAt(x, y) {
+    for (const s of world.state.level.shadows) {
+      if (pointInRect(x, y, s)) return s;
+    }
+    return null;
   }
 
   function decide(dt) {
@@ -205,6 +256,48 @@ export function createAutopilot(world) {
     const target = pickTarget();
     state.target = target;
 
+    // Cooling off after a broken lockpick: hide until the guards' suspicion
+    // has decayed, instead of walking straight back into the same cone.
+    if (target.loot && isLockpickLoot(target.loot.kind) && now < state.lockpickCooldownUntil) {
+      state.lastDecision = 'cooling-off';
+      const sh = nearestSafeShadow(p.x, p.y);
+      if (sh && dist(p.x, p.y, sh.x, sh.y) > 30) {
+        const dir = dirTo(sh.x, sh.y);
+        return { steer: { x: dir.x, y: dir.y }, sneak: true, interact: false, noiseAt: null, emp: false };
+      }
+      return { steer: { x: 0, y: 0 }, sneak: true, interact: false, noiseAt: null, emp: false };
+    }
+
+    // Lure a guard away from a lockpick target before starting the pick:
+    // throw a noise 300px west of the nearest guard, so it walks off to
+    // investigate while the 4-second pick runs. Only when no guard is
+    // already alerted — an alerted guard ignores noises and chases.
+    if (target.loot && isLockpickLoot(target.loot.kind) && w.noiseCharges > 0 && now - state.lastNoiseAt > 10) {
+      const d = dist(p.x, p.y, target.loot.x, target.loot.y);
+      if (d < 170) {
+        let near = null;
+        let nd = Infinity;
+        let alertedNear = false;
+        for (const g of w.guards) {
+          const gd = dist(g.x, g.y, target.loot.x, target.loot.y);
+          if (gd < nd) {
+            nd = gd;
+            near = g;
+          }
+          if (gd < 260 && g.state === 'alerted') alertedNear = true;
+        }
+        if (near && nd < 260 && !alertedNear) {
+          const lx = clamp(near.x - 300, ROOM.x + 20, ROOM.x + ROOM.width - 20);
+          const ly = clamp(near.y, ROOM.y + 20, ROOM.y + ROOM.height - 20);
+          if (dist(lx, ly, target.loot.x, target.loot.y) > 250) {
+            state.lastNoiseAt = now;
+            state.lastDecision = 'lure-before-pick';
+            return { steer: { x: 0, y: 0 }, sneak: true, interact: false, noiseAt: { x: lx, y: ly }, emp: false };
+          }
+        }
+      }
+    }
+
     // Lockpicking: stand still on the safe or vault and hold E — unless a
     // cone is on us, in which case break off and come back later.
     if (target.loot && isLockpickLoot(target.loot.kind)) {
@@ -212,8 +305,9 @@ export function createAutopilot(world) {
       if (d < 40) {
         if (dangerAt(p.x, p.y)) {
           state.lastDecision = 'break-off-lockpick';
+          state.lockpickCooldownUntil = now + 5;
           const { threat, dist: td } = nearestThreat(p.x, p.y);
-          if (threat && td < 85) return fleeCmd(threat);
+          if (threat && td < 120) return fleeCmd(threat);
           const sh = nearestSafeShadow(p.x, p.y);
           if (sh) {
             const dir = dirTo(sh.x, sh.y);
@@ -226,12 +320,13 @@ export function createAutopilot(world) {
       }
     }
 
-    // Being watched right now: get out of the cone. A guard right on top
-    // of us means run, not hide; otherwise retreat to a safe shadow.
+    // Being watched right now: get out of the cone. A guard that is already
+    // suspicious or alerted and close by means run at full speed — sneaking
+    // (98) cannot outrun a suspicious guard (105) or a chase (152).
     const here = dangerAt(p.x, p.y);
     if (here) {
       const { threat, dist: td } = nearestThreat(p.x, p.y);
-      if (threat && td < 85) {
+      if (threat && td < 120) {
         state.lastDecision = 'flee';
         return fleeCmd(threat);
       }
@@ -241,15 +336,43 @@ export function createAutopilot(world) {
         const dir = dirTo(sh.x, sh.y);
         return { steer: { x: dir.x, y: dir.y }, sneak: true, interact: false, noiseAt: null, emp: false };
       }
-      if (sh) {
-        state.lastDecision = 'hold-in-shadow';
-        return { steer: { x: 0, y: 0 }, sneak: true, interact: false, noiseAt: null, emp: false };
-      }
-      if (threat) {
-        state.lastDecision = 'flee-no-shadow';
-        return fleeCmd(threat);
+      // Already in a shadow but still seen: slide sideways out of the
+      // cone instead of holding still — holding still is how suspicion
+      // finishes building. Slide perpendicular to the guard's line of
+      // sight, toward the nearest safe shadow (or the room's middle).
+      {
+        const { threat } = nearestThreat(p.x, p.y);
+        if (threat) {
+          const dx = p.x - threat.x;
+          const dy = p.y - threat.y;
+          const len = Math.hypot(dx, dy) || 1;
+          const ref = nearestSafeShadow(p.x, p.y) ?? { x: 640, y: 390 };
+          const side = (-dy / len) * (ref.x - p.x) + (dx / len) * (ref.y - p.y) >= 0 ? 1 : -1;
+          state.lastDecision = 'slide-out-of-cone';
+          return {
+            steer: { x: (-dy / len) * side, y: (dx / len) * side },
+            sneak: true, interact: false, noiseAt: null, emp: false,
+          };
+        }
       }
       return { steer: { x: 0, y: 0 }, sneak: true, interact: false, noiseAt: null, emp: false };
+    }
+
+    // A guard that is already onto us and closing in: run now, even if we
+    // are not inside a cone this exact frame.
+    {
+      let hunter = null;
+      let hd = Infinity;
+      for (const g of w.guards) {
+        if ((g.state === 'alerted' || (g.state === 'suspicious' && g.suspicion > 0.4)) && dist(p.x, p.y, g.x, g.y) < hd) {
+          hd = dist(p.x, p.y, g.x, g.y);
+          hunter = g;
+        }
+      }
+      if (hunter && hd < 220) {
+        state.lastDecision = 'flee-hunter';
+        return fleeCmd(hunter);
+      }
     }
 
     // Route to the target along the planned path, replanning when the
@@ -279,15 +402,27 @@ export function createAutopilot(world) {
       return { steer: { x: dir.x, y: dir.y }, sneak: true, interact: false, noiseAt: null, emp: false };
     }
 
-    // Is the next step dangerous? Wait for the patrol to pass.
+    // Is the next step dangerous? Check two steps ahead — a patrol lane is
+    // crossed in about a second, and a cone that is clear at 48px can be
+    // on you by the time you get there. Wait for the patrol to pass.
     const probeX = p.x + dir.x * 48;
     const probeY = p.y + dir.y * 48;
-    const threat = dangerAt(probeX, probeY);
+    const threat = dangerAt(probeX, probeY) || dangerAt(p.x + dir.x * 96, p.y + dir.y * 96);
     if (threat) {
       state.lastDecision = `wait-${threat}`;
       // Don't wait in the open: slip into a nearby shadow while the
-      // patrol passes, so the alarm drains instead of building.
-      if (!world.inShadow(p.x, p.y)) {
+      // patrol passes, so the alarm drains instead of building. Inside
+      // a shadow, drift to its centre — the edges are where cones reach.
+      const here = shadowAt(p.x, p.y);
+      if (here) {
+        const cx = here.x + here.w / 2;
+        const cy = here.y + here.h / 2;
+        if (dist(p.x, p.y, cx, cy) > 25) {
+          const sdir = dirTo(cx, cy);
+          state.lastDecision = 'wait-shadow-centre';
+          return { steer: { x: sdir.x, y: sdir.y }, sneak: true, interact: false, noiseAt: null, emp: false };
+        }
+      } else {
         const sh = nearestSafeShadow(p.x, p.y);
         if (sh && dist(p.x, p.y, sh.x, sh.y) < 170) {
           const sdir = dirTo(sh.x, sh.y);

@@ -6,8 +6,9 @@
 import { STEP } from './config.js';
 import { SCREEN_TITLE, SCREEN_PLAY, SCREEN_CLEAR } from './render.js';
 import { createAutopilot } from './autoplay.js';
+import { formatTime } from './alarm.js';
 
-const PLAY_SECONDS = 18;
+const PLAY_SECONDS = 12;
 const WIN_LIMIT_SECONDS = 240;
 
 /** Run the autopilot for `seconds` of game time (or until the level ends). */
@@ -59,7 +60,7 @@ export function stageShot(name, world) {
       clear: {
         levelName: world.state.level.name,
         loot: world.state.lootValue,
-        time: world.state.timer,
+        time: formatTime(world.state.timer),
         rank: world.rank(),
         best: null,
         finale: false,

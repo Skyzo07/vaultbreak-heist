@@ -86,7 +86,7 @@ export const LEVELS = [
       { kind: 'gold', x: 220, y: 640, value: 500 },
       { kind: 'gold', x: 1180, y: 620, value: 500 },
       { kind: 'gem', x: 620, y: 130, value: 1000 },
-      { kind: 'safe', x: 700, y: 500, value: 1000 },
+      { kind: 'safe', x: 200, y: 300, value: 1000 },
       { kind: 'gem', x: 850, y: 420, value: 1000 },
     ],
     lasers: [],
@@ -119,9 +119,9 @@ export const LEVELS = [
     ],
     guards: [
       { waypoints: [{ x: 380, y: 200 }, { x: 600, y: 200 }], pause: 1.0 },
-      { waypoints: [{ x: 1020, y: 200 }, { x: 1020, y: 600 }], pause: 1.2 },
+      { waypoints: [{ x: 1020, y: 350 }, { x: 1020, y: 600 }], pause: 1.2 },
       { waypoints: [{ x: 380, y: 560 }, { x: 600, y: 560 }], pause: 1.1 },
-      { waypoints: [{ x: 1150, y: 200 }, { x: 1150, y: 500 }], pause: 1.4 },
+      { waypoints: [{ x: 1120, y: 200 }, { x: 1120, y: 400 }], pause: 1.4 },
     ],
     cameras: [
       { x: 480, y: 80, baseAngle: Math.PI / 2, sweep: 0.6, speed: 0.6 },
@@ -132,7 +132,7 @@ export const LEVELS = [
       { kind: 'gold', x: 120, y: 150, value: 500 },
       { kind: 'gold', x: 120, y: 640, value: 500 },
       { kind: 'gem', x: 520, y: 640, value: 1000 },
-      { kind: 'vault', x: 1180, y: 360, value: 2500 },
+      { kind: 'vault', x: 1220, y: 360, value: 2500 },
     ],
     // Three beams across the middle corridor, blinking in turn: cross
     // while your beam is dark. The top and bottom lanes stay open.
